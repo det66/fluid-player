@@ -182,6 +182,35 @@ var fluidPlayerClass = {
         return false;
     },
 
+
+    getVastAdTagUriFromWrapper: function(wrapper) {
+
+        if (typeof wrapper !== 'undefined' && wrapper.length) {
+
+            var vastAdTagURI = wrapper[0].getElementsByTagName('VASTAdTagURI');
+            if (vastAdTagURI.length) {
+                return vastAdTagURI[0].childNodes[0].nodeValue;
+            }
+        }
+
+        return false;
+    },
+
+
+    hasVastAdTagUriFromWrapper: function(creative) {
+        var player = this;
+
+        if ((typeof creative !== 'undefined') && creative.length) {
+            var arrayCreativeLinears = creative[0].getElementsByTagName('Linear');
+            if ((typeof arrayCreativeLinears !== 'undefined') && (arrayCreativeLinears !== null) && arrayCreativeLinears.length) {
+                return player.getMediaFileFromLinear(arrayCreativeLinears[0]);
+            }
+        }
+
+        return false;
+    },
+
+
     getTrackingFromLinear: function(linear) {
         var trackingEvents = linear.getElementsByTagName('TrackingEvents');
 
@@ -363,7 +392,7 @@ var fluidPlayerClass = {
         var player = this;
 
         player.initialStart = true;
-        player.parseVastTag(player.vastOptions.vastTagUrl);
+        player.processUrl(player.vastOptions.vastTagUrl);
     },
 
     toggleLoader: function(showLoader) {
@@ -409,31 +438,14 @@ var fluidPlayerClass = {
     /**
      * Parse the VAST Tag
      *
-     * @param vastTag
+     * @param xmlResponse
      */
-    parseVastTag: function(vastTag) {
+    parseVastTag: function(xmlResponse) {
         var player = this;
 
         player.toggleLoader(true);
 
-        player.sendRequest(
-            vastTag,
-            true,
-            player.displayOptions.vastTimeout,
-            function() {
-                var xmlHttpReq = this;
-
-                if ((xmlHttpReq.readyState === 4) && (xmlHttpReq.status !== 200)) {
-                    //The response returned an error. Proceeding with the main video.
-                    player.playMainVideoWhenVastFails(900);
-                    return;
-                }
-
-                if (!((xmlHttpReq.readyState === 4) && (xmlHttpReq.status === 200))) {
-                    return;
-                }
-
-                var xmlResponse = xmlHttpReq.responseXML;
+        if(xmlResponse) {
 
                 //Get impression tag
                 var impression = xmlResponse.getElementsByTagName('Impression');
@@ -485,7 +497,80 @@ var fluidPlayerClass = {
                 }
                 player.displayOptions.vastLoadedCallback();
             }
-        );
+
+    },
+
+    processUrl: function(vastTag) {
+        var player = this;
+        var numberOfJumps = 0;
+
+        player.toggleLoader(true);
+
+        var resolveVastTag = function (vastTag, callback, numberOfJumps) {
+
+            var handleXmlHttpReq = function () {
+                var xmlHttpReq = this;
+
+                if ((xmlHttpReq.readyState === 4) && (xmlHttpReq.status !== 200)) {
+                    player.playMainVideoWhenVastFails(900);
+                    return;
+                }
+
+                if (!((xmlHttpReq.readyState === 4) && (xmlHttpReq.status === 200))) {
+                    return;
+                }
+
+                numberOfJumps++;
+
+                var xmlResponse = xmlHttpReq.responseXML;
+
+                player.linearFound = player.hasVastAdTagUriFromWrapper(xmlResponse.getElementsByTagName('Creative'));
+
+                if (!player.linearFound) {
+                    var wrapper = xmlResponse.getElementsByTagName('Wrapper');
+
+                    if ((typeof wrapper !== 'undefined') && wrapper.length) {
+
+                        var vastAdTagURI = xmlResponse.getElementsByTagName('VASTAdTagURI');
+
+                        if ((typeof vastAdTagURI !== 'undefined') && vastAdTagURI.length) {
+                            resolveVastTag(player.getVastAdTagUriFromWrapper(wrapper), callback, numberOfJumps);
+                        }
+
+                    }
+
+                }
+
+                if (numberOfJumps >= player.maxVastTagJumps && !player.linearFound) {
+                    player.playMainVideoWhenVastFails(101);
+                }
+
+                if (player.linearFound) {
+                    callback(numberOfJumps);
+                    player.parseVastTag(xmlResponse);
+                }
+
+            };
+
+            if (numberOfJumps < player.maxVastTagJumps) {
+
+                player.sendRequest(
+                    vastTag,
+                    true,
+                    player.displayOptions.vastTimeout,
+                    handleXmlHttpReq
+                );
+
+            }
+
+        };
+
+
+        resolveVastTag(vastTag, function (numberOfJumps) {
+            console.log('eventually', numberOfJumps);
+        }, numberOfJumps);
+
+
     },
 
     switchPlayerToVastMode: function() {},
@@ -1951,6 +2036,9 @@ var fluidPlayerClass = {
         player.initialStart         = false;
         player.suppressClickthrough = false;
         player.timelinePreviewData  = [];
+        player.xmlCollection  = [];
+        player.linearFound  = null;
+        player.maxVastTagJumps  = 3;
 
         //Default options
         player.displayOptions = {
