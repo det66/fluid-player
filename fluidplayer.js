@@ -25,7 +25,7 @@ var fluidPlayerScriptLocation = function() {
     return '';
 }();
 
-fluidPlayer = function(idVideoPlayer, vastTag, options) {
+fluidPlayer = function(idVideoPlayer, options) {
     var inArray = function(needle, haystack) {
         var length = haystack.length;
 
@@ -47,13 +47,7 @@ fluidPlayer = function(idVideoPlayer, vastTag, options) {
 
     fluidPlayerClass.instances.push(copy);
 
-    //Keeping the vastTag as backwards compatibility
-    if (typeof vastTag !== 'undefined' && typeof vastTag !== "string") {
-        options = vastTag;
-        vastTag = null;
-    }
-
-    copy.init(idVideoPlayer, vastTag, options);
+    copy.init(idVideoPlayer, options);
 
     return copy;
 };
@@ -1218,7 +1212,7 @@ var fluidPlayerClass = {
 
         player.removeClickthrough();
         player.removeSkipButton();
-        player.removeAddCountdown();
+        player.removeAdCountdown();
         player.removeAdPlayingText();
         player.removeCTAButton();
         player.adFinished = true;
@@ -1293,15 +1287,19 @@ var fluidPlayerClass = {
     addAdCountdown: function() {
         var videoPlayerTag = document.getElementById(this.videoPlayerId);
         var videoWrapper = document.getElementById('fluid_video_wrapper_' + this.videoPlayerId);
-        var divAdCountdown = document.createElement('div');
         var clickthrough = document.getElementById('vast_clickthrough_layer_' + this.videoPlayerId);
+        var divAdCountdown = document.createElement('div');
 
-        divAdCountdown.id = 'ad_countdown' + this.videoPlayerId;
-        divAdCountdown.className = 'ad_countdown';
+        // Create element
         var adCountdown = player.pad(parseInt(player.currentVideoDuration / 60)) + ':' + player.pad(parseInt(player.currentVideoDuration % 60));
         var durationText = parseInt(adCountdown);
-
+        divAdCountdown.id = 'ad_countdown' + this.videoPlayerId;
+        divAdCountdown.className = 'ad_countdown';
         divAdCountdown.innerHTML = "Ad - " + durationText;
+
+        if (!this.isUserActive) {
+            divAdCountdown.style.display = 'inline-block';
+        }
 
         videoWrapper.appendChild(divAdCountdown);
 
@@ -1322,7 +1320,7 @@ var fluidPlayerClass = {
         }
     },
 
-    removeAddCountdown: function() {
+    removeAdCountdown: function() {
         btn = document.getElementById('ad_countdown' + this.videoPlayerId);
         if (btn) {
             btn.parentElement.removeChild(btn);
@@ -1999,7 +1997,7 @@ var fluidPlayerClass = {
         document.addEventListener('touchmove', onVolumebarMouseMove);
     },
 
-    setVastList: function (vastTag) {
+    setVastList: function () {
         var player = this;
         var ads = {};
         var def = {id: null, roll: null, played: false, vastLoaded: false, error: false};
@@ -2020,14 +2018,6 @@ var fluidPlayerClass = {
 
             return hasError;
         };
-
-        //Keeping the vastTag as backwards compatibility
-        if (typeof vastTag !== 'undefined' && typeof vastTag === "string") {
-            ads['ID' + idPart] = Object.assign({}, def);
-            ads['ID' + idPart].roll = 'preRoll';
-            ads['ID' + idPart].vastTag = vastTag;
-            idPart++;
-        }
 
         var validateRequiredParams = function (item) {
             var hasError = false;
@@ -2219,13 +2209,11 @@ var fluidPlayerClass = {
     },
 
     handleMouseleave: function () {
-        console.log('yeah now');
         var player = this;
         var videoInstanceId = fluidPlayerClass.getInstanceIdByWrapperId(player.getAttribute('id'));
         var videoPlayerInstance = fluidPlayerClass.getInstanceById(videoInstanceId);
 
-        window.clearInterval(videoPlayerInstance.activityCheck);
-
+        videoInstanceId.activityCheck
         if (videoPlayerInstance.isCurrentlyPlayingAd) {
             videoPlayerInstance.toggleAdCountdown(true);
         }
@@ -3057,8 +3045,6 @@ var fluidPlayerClass = {
         };
 
         player.activityCheck = setInterval(function () {
-            console.log('checking. . .');
-
             if (player.newActivity === true) {
                 player.newActivity = false;
 
@@ -3068,7 +3054,6 @@ var fluidPlayerClass = {
                     var event = new CustomEvent("userActive");
                     videoPlayerTag.dispatchEvent(event);
                     player.isUserActive = true;
-                    console.log('Yes');
                 }
 
                 clearTimeout(player.inactivityTimeout);
@@ -3076,7 +3061,6 @@ var fluidPlayerClass = {
                 player.inactivityTimeout = setTimeout(function () {
 
                     if (player.newActivity !== true) {
-                        console.log('uh oh');
                         player.isUserActive = false;
                         event = new CustomEvent("userInactive");
                         videoPlayerTag.dispatchEvent(event);
@@ -3213,7 +3197,7 @@ var fluidPlayerClass = {
         var progressInterval = setInterval(logProgress, 500);
     },
 
-    init: function(idVideoPlayer, vastTag, options) {
+    init: function(idVideoPlayer, options) {
         var player = this;
         var videoPlayer = document.getElementById(idVideoPlayer);
 
@@ -3253,7 +3237,6 @@ var fluidPlayerClass = {
         player.displayOptions = {
             layoutControls: {
                 mediaType:                  'video/mp4',//TODO: should be taken from the VAST Tag; consider removing it completely, since the supported format is browser-dependent
-
                 primaryColor:               false,
                 adProgressColor:            '#f9d300',
                 playButtonShowing:          true,
@@ -3264,28 +3247,23 @@ var fluidPlayerClass = {
                 mute:                       false,
                 keyboardControl:            true,
                 layout:                     'default', //options: 'default', 'browser', '<custom>'
-
                 logo: {
                     imageUrl:               null,
                     position:               'top left',
                     clickUrl:               null,
                     opacity:                1
                 },
-
                 controlBar: {
                     autoHide:               true,
                     autoHideTimeout:        3,
                     animated:               true
                 },
-
                 timelinePreview:            {},
-
                 htmlOnPauseBlock: {
                     html:                   null,
                     height:                 null,
                     width:                  null
                 },
-
                 playerInitCallback:         (function() {})
             },
             vastOptions: {
@@ -3358,7 +3336,7 @@ var fluidPlayerClass = {
         player.createVideoSourceSwitch();
         player.userActivityChecker();
 
-        player.setVastList(vastTag);
+        player.setVastList();
 
 
         if (player.displayOptions.layoutControls.autoPlay) {
